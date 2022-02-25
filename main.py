@@ -53,15 +53,17 @@ class Laser:
 
     # method to determine if laser is off-screen based on height of screen
     def off_screen(self, height):
-        return self.y <= height and self.y >= 0
+        return not (self.y <= height and self.y >= 0)
 
     # method to determine if laser has collided with another object
     def collision(self, obj):
-        return collide(obj, self)
+        return collide(self, obj)
 
 
 # Generic Ship methods
 class Ship:
+    COOLDOWN = 30 #FPS
+
     def __init__(self, x, y, health=100):
         self.x = x
         self.y = y
@@ -74,6 +76,49 @@ class Ship:
     # function to draw ship and fill rectangle it's in
     def draw(self, window):
         window.blit(self.ship_img, (self.x, self.y))
+        for laser in self.lasers:
+          laser.draw(window)
+
+    # function to move lasers
+    def move_lasers(self, vel, obj):
+      # check cooldown
+      self.cooldown()
+      # loop over lasers in list
+      for laser in self.lasers:
+        # move by velocity set down the screen
+        laser.move(vel)
+        # if laser is off screen
+        if laser.off_screen(HEIGHT):
+          # remove laser from list
+          self.lasers.remove(laser)
+        # if laser collides with object
+        elif laser.collision(obj):
+          # decrement object health
+          obj.health -= 10
+          # remove laser from list
+          self.lasers.remove(laser)
+
+    # function to handle cooldown counter
+    def cooldown(self):
+      # check if counter is greater than 30 FPS
+      if self.cool_down_counter >= self.COOLDOWN:
+        # if true reset cooldown counter back to zero
+        self.cool_down_counter = 0
+      # check if counter is greater than 0
+      elif self.cool_down_counter > 0:
+        # if true increment counter
+        self.cool_down_counter += 1
+
+    # function to create laser
+    def shoot(self):
+      # check if cooldown is at 0
+      if self.cool_down_counter == 0:
+        # create new laser at ship's current location
+        laser = Laser(self.x, self.y, self.laser_img)
+        # add to laser list
+        self.lasers.append(laser)
+        # reset cool down counter
+        self.cool_down_counter = 1
 
     def get_width(self):
         return self.ship_img.get_width()
@@ -92,6 +137,28 @@ class Player(Ship):
         # set pixel perfect collision detection
         self.mask = pygame.mask.from_surface(self.ship_img)
         self.max_health = health
+    
+    # function to move lasers and check if they've hit enemies
+    def move_lasers(self, vel, objs):
+      # check cooldown
+      self.cooldown()
+      # loop over lasers in list
+      for laser in self.lasers:
+        # move by velocity set down the screen
+        laser.move(vel)
+        # if laser is off screen
+        if laser.off_screen(HEIGHT):
+          # remove laser from list
+          self.lasers.remove(laser)
+        else: 
+          # loop over enemy objects
+          for obj in objs:
+            # if laser collides with enemy
+            if laser.collision(obj):
+              # remove enemy (obj) from enemy list (objs)
+              objs.remove(obj)
+              # remove laser from list
+              self.lasers.remove(laser)
 
 
 # Enemy Ship methods
@@ -114,8 +181,16 @@ class Enemy(Ship):
     def move(self, vel):
         self.y += vel
 
-#
-# def collide(obj1, obj2):
+# function to determine if two objects have collided
+def collide(obj1, obj2):
+  # How far away object 1 is from object 2
+  offset_x = obj2.x - obj1.x
+  offset_y = obj2.y - obj1.y
+  # check is object 1 overlapping object 2 based on offset values
+  # return None if false
+  # return (x, y) point of intersection if true
+  return obj1.mask.overlap(obj2.mask, (offset_x, offset_y)) != None
+
 
 
 # Main Game Loop
@@ -145,6 +220,7 @@ def main():
 
     # set player velocity (pixels)
     player_vel = 5
+    laser_vel = 5
 
     # create Ship
     player = Player(300, 650)
@@ -233,18 +309,23 @@ def main():
         if keys[pygame.K_s] and player.y + player_vel + player.get_height() < HEIGHT:
             # add velocity to current player position on y-axis
             player.y += player_vel
+        # if player presses spacebar shoot laser
+        if keys[pygame.K_SPACE]:
+          player.shoot()
 
         # loop over enemies list
-        for enemy in enemies:
+        for enemy in enemies[:]:
             # move each enemy at velocity sent in param
             enemy.move(enemy_vel)
-
+            # move laser at laser_vel and check if it's hit the player obj
+            enemy.move_lasers(laser_vel, player)
             # check if enemy is off bottom of screen
             if (enemy.y + enemy.get_height() > HEIGHT):
                 # if so decrement player's lives
                 lives -= 1
                 # remove that enemy from the list so it doesn't come back
                 enemies.remove(enemy)
-
+        # move laser at laser_vel and check if it's hit an enemy in enemies list
+        player.move_lasers(-laser_vel, enemies)
 
 main()
